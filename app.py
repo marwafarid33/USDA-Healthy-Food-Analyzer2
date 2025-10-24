@@ -9,8 +9,8 @@ import seaborn as sns
  
 
 # === 1. تحميل البيانات ===
-train_path = "/kaggle/input/usda-national-nutrient-database/train.csv"
-test_path = "/kaggle/input/usda-national-nutrient-database/test.csv"
+train_path = "/content/train.csv"
+test_path = "/content/test.csv"
 
 train = pd.read_csv(train_path)
 test = pd.read_csv(test_path)
@@ -123,3 +123,4 @@ st.bar_chart(train['Healthy_Score'])
 
 st.header("Health Class Distribution")
 st.bar_chart(train['Health_Class'].value_counts())
+
