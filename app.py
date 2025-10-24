@@ -1,127 +1,67 @@
-
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 
- 
-
-# === 1. تحميل البيانات ===
+# ======== 1. تحميل البيانات ========
 train_path = "train.csv"
-test_path = "test.csv"
-
 train = pd.read_csv(train_path)
-test = pd.read_csv(test_path)
 
-st.title("Comprehensive EDA & Healthy Food Recommendations 🍎")
-st.write("Train shape:", train.shape, " | Test shape:", test.shape)
+st.title("🍎 Personalized Healthy Food Recommendation System")
+st.write("اختر بياناتك الشخصية وهدفك الصحي للحصول على أفضل توصيات غذائية")
 
-# === 2. EDA شامل ===
-st.header("Data Overview")
-st.write("First 5 rows of Train:")
-st.dataframe(train.head())
+# ======== 2. إدخال بيانات المستخدم ========
+st.sidebar.header("📝 بياناتك الشخصية")
 
-st.subheader("Missing Values per Column")
-st.write(train.isnull().sum())
+age = st.sidebar.number_input("العمر (سنة):", min_value=1, max_value=120, value=25)
+weight = st.sidebar.number_input("الوزن (كجم):", min_value=1, max_value=300, value=70)
+height = st.sidebar.number_input("الطول (سم):", min_value=50, max_value=250, value=170)
+gender = st.sidebar.selectbox("الجنس:", ["Male", "Female"])
+activity = st.sidebar.selectbox("مستوى النشاط:", ["Low", "Moderate", "High"])
+goal = st.sidebar.selectbox("هدفك الصحي:", ['weight_loss', 'muscle_gain', 'heart_health', 'overall'])
+n = st.sidebar.slider("عدد التوصيات:", min_value=5, max_value=20, value=10)
 
-st.subheader("Descriptive Statistics")
-st.write(train.describe())
+# ======== 3. حساب BMR واحتياجات الطاقة ========
+if gender == "Male":
+    bmr = 10*weight + 6.25*height - 5*age + 5
+else:
+    bmr = 10*weight + 6.25*height - 5*age - 161
 
-# عدد الأصناف لكل FoodGroup
-st.subheader("Number of Foods per Food Group")
-plt.figure(figsize=(12,5))
-train['FoodGroup'].value_counts().plot(kind='bar')
-plt.xticks(rotation=75)
-st.pyplot()
+activity_factor = {"Low": 1.2, "Moderate": 1.55, "High": 1.725}
+calories_needed = bmr * activity_factor[activity]
 
-# Boxplot للقيم الغذائية الأساسية
-st.subheader("Boxplot of Key Nutrients")
-num_cols = ['Energy_kcal','Protein_g','Fat_g','Carb_g','Sugar_g','Fiber_g']
-plt.figure(figsize=(12,6))
-sns.boxplot(data=train[num_cols], orient='h')
-st.pyplot()
-
-# Heatmap للارتباط بين العناصر الغذائية
-st.subheader("Correlation Heatmap of Nutrients")
-plt.figure(figsize=(8,6))
-sns.heatmap(train[num_cols].corr(), annot=True, cmap="coolwarm")
-st.pyplot()
-
-# Scatter plots
-st.subheader("Scatter: Protein vs Energy")
-sns.scatterplot(data=train, x='Protein_g', y='Energy_kcal', hue='FoodGroup', legend=False)
-st.pyplot()
-
-st.subheader("Scatter: Fat vs Energy")
-sns.scatterplot(data=train, x='Fat_g', y='Energy_kcal', hue='FoodGroup', legend=False)
-st.pyplot()
-
-# === 3. إنشاء Healthy Score ===
+# ======== 4. حساب Healthy Score شخصي ========
+# كثافة البروتين، الألياف، السكر، الدهون
 train['Protein_Density'] = train['Protein_g'] / (train['Energy_kcal'] + 1)
 train['Fiber_Density'] = train['Fiber_g'] / (train['Carb_g'] + 1)
 train['Sugar_Ratio'] = train['Sugar_g'] / (train['Carb_g'] + 1)
 train['Fat_Ratio'] = train['Fat_g'] / (train['Energy_kcal'] + 1)
 
-train['Healthy_Score'] = (
-    train['Protein_Density'] * 0.4 +
-    train['Fiber_Density'] * 0.3 -
-    train['Sugar_Ratio'] * 0.2 -
-    train['Fat_Ratio'] * 0.1
-)
+# تعديل الأوزان حسب الهدف
+def compute_healthy_score(row, goal):
+    score = (row['Protein_Density']*0.4 + row['Fiber_Density']*0.3 
+             - row['Sugar_Ratio']*0.2 - row['Fat_Ratio']*0.1)
+    if goal == 'weight_loss':
+        score += 0.2 * (1 - row['Energy_kcal']/1000)  # يعطي أولوية للأطعمة منخفضة الطاقة
+    elif goal == 'muscle_gain':
+        score += 0.2 * row['Protein_Density']          # أولوية للبروتين العالي
+    elif goal == 'heart_health':
+        score += 0.2 * (1 - row['Fat_Ratio'])         # أولوية للدهون الأقل
+    return score
 
-def classify_health(score):
-    if score >= train['Healthy_Score'].quantile(0.75):
-        return "High"
-    elif score >= train['Healthy_Score'].quantile(0.25):
-        return "Medium"
-    else:
-        return "Low"
+train['Healthy_Score_User'] = train.apply(lambda row: compute_healthy_score(row, goal), axis=1)
 
-train['Health_Class'] = train['Healthy_Score'].apply(classify_health)
+# ======== 5. دالة التوصية ========
+def recommend_foods(df, n=10):
+    df_sorted = df.sort_values('Healthy_Score_User', ascending=False)
+    return df_sorted[['Descrip','FoodGroup','Energy_kcal','Protein_g','Fat_g',
+                      'Carb_g','Sugar_g','Fiber_g','Healthy_Score_User']].head(n)
 
-# تحليل Healthy Score حسب FoodGroup
-st.subheader("Average Healthy Score per Food Group")
-healthy_groups = train.groupby('FoodGroup')['Healthy_Score'].mean().sort_values(ascending=False)
-plt.figure(figsize=(12,5))
-healthy_groups.plot(kind='bar')
-plt.xticks(rotation=75)
-st.pyplot()
-
-st.write("Top 10 Healthiest Food Groups:")
-st.dataframe(healthy_groups.head(10))
-
-# === 4. دوال توصية ===
-def recommend_foods(df, goal='weight_loss', n=10):
-    if goal=='weight_loss':
-        df_sorted = df.sort_values(['Energy_kcal','Sugar_Ratio'], ascending=[True, True])
-    elif goal=='muscle_gain':
-        df_sorted = df.sort_values(['Protein_g','Energy_kcal'], ascending=[False, True])
-    elif goal=='heart_health':
-        df_sorted = df.sort_values(['Fat_g','Sugar_Ratio'], ascending=[True, True])
-    else:  # overall
-        df_sorted = df.sort_values('Healthy_Score', ascending=False)
-    
-    return df_sorted[['Descrip','FoodGroup','Energy_kcal','Protein_g','Fat_g','Carb_g',
-                      'Sugar_g','Fiber_g','Healthy_Score','Health_Class']].head(n)
-
-# === 5. واجهة Streamlit للتوصيات ===
-st.sidebar.header("Select Your Goal")
-goal = st.sidebar.selectbox("Choose your goal:", 
-                            ['weight_loss', 'muscle_gain', 'heart_health', 'overall'])
-
-st.sidebar.header("Number of Recommendations")
-n = st.sidebar.slider("Select number of foods:", min_value=5, max_value=20, value=10)
-
-st.header(f"Top {n} Foods for {goal.replace('_',' ').title()}")
-recommendations = recommend_foods(train, goal=goal, n=n)
+# ======== 6. عرض النتائج ========
+st.header(f"أفضل {n} أطعمة لهدف: {goal.replace('_',' ').title()}")
+recommendations = recommend_foods(train, n=n)
 st.dataframe(recommendations)
 
-st.header("Healthy Score Distribution")
-st.bar_chart(train['Healthy_Score'])
+st.header("🍽️ توزيع السعرات والطاقة لكل طعام")
+st.bar_chart(recommendations[['Energy_kcal','Protein_g','Fat_g','Carb_g']])
 
-st.header("Health Class Distribution")
-st.bar_chart(train['Health_Class'].value_counts())
-
-
+st.success(f"احتياجاتك اليومية للطاقة تقريبية: {int(calories_needed)} سعرة حرارية")
