@@ -9,8 +9,8 @@ import seaborn as sns
  
 
 # === 1. تحميل البيانات ===
-train_path = "/content/train.csv"
-test_path = "/content/test.csv"
+train_path = "train.csv"
+test_path = "test.csv"
 
 train = pd.read_csv(train_path)
 test = pd.read_csv(test_path)
@@ -123,4 +123,5 @@ st.bar_chart(train['Healthy_Score'])
 
 st.header("Health Class Distribution")
 st.bar_chart(train['Health_Class'].value_counts())
+
 
